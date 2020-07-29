@@ -1,0 +1,7 @@
+登陆https://colab.research.google.com/github/ultralytics/yolov5/blob/master/tutorial.ipynb
+输入下面代码转换模型后下载
+from utils import google_utils
+weights='yolov5l.pt'
+google_utils.attempt_download(weights)
+model = torch.load(weights, map_location='cpu')['model'].float() 
+torch.save(model.state_dict(), 'yolov5l_state_dict.pt')
