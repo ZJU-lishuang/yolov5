@@ -69,7 +69,7 @@ def detect(save_img=False):
                 "T_shanghai_hongqiao_xianchang_test": 1,
                 }
     file_data = ""
-    file_data += "filename,0,1,2,3,miss,correct,error,head,body\n"
+    file_data += "filename,0,1,2,3,miss,correct,error\n"
 
     num_zero = {}
     num_one = {}
@@ -240,7 +240,7 @@ def detect(save_img=False):
         num_miss = 0
     file_data += key + ",{},{},{},{},{},{},{},{},{}\n".format(num_zero[key], num_one[key], num_two[key], num_three[key],
                                                         num_miss,
-                                                        num_correct, num_error,num_head[key],num_body[key])
+                                                        num_correct, num_error)
 
     with open('yolov5-fangweisui.csv', 'w') as f:
         f.write(file_data)
