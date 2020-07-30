@@ -966,7 +966,7 @@ def random_affine(img, targets=(), degrees=10, translate=.1, scale=.1, shear=10,
         xy[:, [1, 3]] = xy[:, [1, 3]].clip(0, height)
 
         # filter candidates
-        i = box_candidates(box1=targets[:, 1:5].T * s, box2=xy.T)
+        i = box_candidates(box1=targets[:, 1:5].T * s, box2=xy.T,wh_thr=10,ar_thr=3,area_thr=0.8)
         targets = targets[i]
         targets[:, 1:5] = xy[i]
 
