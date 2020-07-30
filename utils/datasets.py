@@ -484,11 +484,47 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             shapes = None
 
             # MixUp https://arxiv.org/pdf/1710.09412.pdf
-            # if random.random() < 0.5:
-            #     img2, labels2 = load_mosaic(self, random.randint(0, len(self.labels) - 1))
-            #     r = np.random.beta(0.3, 0.3)  # mixup ratio, alpha=beta=0.3
-            #     img = (img * r + img2 * (1 - r)).astype(np.uint8)
-            #     labels = np.concatenate((labels, labels2), 0)
+            mixupflag = True
+            mixup_and_cutmix = True  # mixup and cutmix only one
+            if mixupflag and random.random() < 0.5:
+                img2, labels2 = load_mosaic(self, random.randint(0, len(self.labels) - 1))
+                r = np.random.beta(2, 2)  # mixup ratio, alpha=beta=0.3
+                img = (img * r + img2 * (1 - r)).astype(np.uint8)
+                labels = np.concatenate((labels, labels2), 0)
+                mixup_and_cutmix = False
+
+            # CutMix
+            cutmixflag = True
+            if cutmixflag:
+                def CutMix(image, boxes, r_image, r_boxes):
+                    mixup_image = image.copy()
+                    imsize = min(image.shape[0], r_image.shape[0])
+                    x1, y1 = [int(random.uniform(imsize * 0.0, imsize * 0.45)) for _ in range(2)]
+                    x2, y2 = [int(random.uniform(imsize * 0.55, imsize * 1.0)) for _ in range(2)]
+
+                    mixup_boxes = r_boxes.copy()
+                    area = (r_boxes[:, 3] - r_boxes[:, 1]) * (r_boxes[:, 4] - r_boxes[:, 2])
+
+                    mixup_boxes[:, [1, 3]] = mixup_boxes[:, [1, 3]].clip(min=x1, max=x2)
+                    mixup_boxes[:, [2, 4]] = mixup_boxes[:, [2, 4]].clip(min=y1, max=y2)
+                    mixup_boxes = mixup_boxes.astype(np.int32)
+                    # cropped w, h, area
+                    w = mixup_boxes[:, 3] - mixup_boxes[:, 1]
+                    h = mixup_boxes[:, 4] - mixup_boxes[:, 2]
+                    area0 = w * h
+                    ar = np.maximum(w / (h + 1e-16), h / (w + 1e-16))
+
+                    mixup_boxes = mixup_boxes[np.where((w > 2) & (h > 2) & (area / (area0 + 1e-16) > 0.2) & (ar < 20))]
+                    # mixup_image[y1:y2, x1:x2] = (mixup_image[y1:y2, x1:x2] + r_image[y1:y2, x1:x2]) / 2
+                    mixup_image[y1:y2, x1:x2] = (mixup_image[y1:y2, x1:x2] * 0.5 + r_image[y1:y2, x1:x2] * 0.5).astype(
+                        np.uint8)
+
+                    mixup_boxes = np.concatenate((boxes, mixup_boxes), axis=0)
+                    return mixup_image, mixup_boxes
+
+                if mixup_and_cutmix and random.random() < 0.5:
+                    img2, labels2 = load_mosaic(self, random.randint(0, len(self.labels) - 1))
+                    img, labels = CutMix(img, labels, img2, labels2)
 
         else:
             # Load image
@@ -520,7 +556,9 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                                             shear=hyp['shear'])
 
             # Augment colorspace
-            augment_hsv(img, hgain=hyp['hsv_h'], sgain=hyp['hsv_s'], vgain=hyp['hsv_v'])
+            hsv = True
+            if hsv and random.random() < 0.5:
+                augment_hsv(img, hgain=hyp['hsv_h'], sgain=hyp['hsv_s'], vgain=hyp['hsv_v'])
 
             # Apply cutouts
             # if random.random() < 0.9:
@@ -544,7 +582,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                     labels[:, 1] = 1 - labels[:, 1]
 
             # random up-down flip
-            ud_flip = False
+            ud_flip = True
             if ud_flip and random.random() < 0.5:
                 img = np.flipud(img)
                 if nL:
@@ -604,6 +642,113 @@ def augment_hsv(img, hgain=0.5, sgain=0.5, vgain=0.5):
     #     for i in range(3):
     #         img[:, :, i] = cv2.equalizeHist(img[:, :, i])
 
+def motion_blur(image, degree=7, angle=180):
+    image = np.array(image)
+
+    # 这里生成任意角度的运动模糊kernel的矩阵， degree越大，模糊程度越高
+    M = cv2.getRotationMatrix2D((degree / 2, degree / 2), angle, 1)
+    motion_blur_kernel = np.diag(np.ones(degree))
+    motion_blur_kernel = cv2.warpAffine(motion_blur_kernel, M, (degree, degree))
+
+    motion_blur_kernel = motion_blur_kernel / degree
+    blurred = cv2.filter2D(image, -1, motion_blur_kernel)
+
+    # convert to uint8
+    cv2.normalize(blurred, blurred, 0, 255, cv2.NORM_MINMAX)
+    blurred = np.array(blurred, dtype=np.uint8)
+    return blurred
+
+
+def rotate(img,box, angle, scale=1.):
+    w = img.shape[1]
+    h = img.shape[0]
+    # convet angle into rad
+    rangle = np.deg2rad(angle)  # angle in radians
+    # calculate new image width and height
+    nw = (abs(np.sin(rangle) * h) + abs(np.cos(rangle) * w)) * scale
+    nh = (abs(np.cos(rangle) * h) + abs(np.sin(rangle) * w)) * scale
+    # ask OpenCV for the rotation matrix
+    rot_mat = cv2.getRotationMatrix2D((nw * 0.5, nh * 0.5), angle, scale)
+    # calculate the move from the old center to the new center combined
+    # with the rotation
+
+    rot_move = np.dot(rot_mat, np.array([(nw - w) * 0.5, (nh - h) * 0.5, 0]))
+
+    # the move only affects the translation, so update the translation
+    # part of the transform
+
+    rot_mat[0, 2] += rot_move[0]
+    rot_mat[1, 2] += rot_move[1]
+    # map
+    rotate_box = box.copy()
+    for box_id in range(len(box)):
+        xmin = box[box_id][0]
+        xmax = box[box_id][2]
+        ymin = box[box_id][1]
+        ymax = box[box_id][3]
+        #             point1 = np.dot(rot_mat, np.array([(xmin+xmax)/2, ymin, 1]))
+        #             point2 = np.dot(rot_mat, np.array([xmax, (ymin+ymax)/2, 1]))
+        #             point3 = np.dot(rot_mat, np.array([(xmin+xmax)/2, ymax, 1]))
+        #             point4 = np.dot(rot_mat, np.array([xmin, (ymin+ymax)/2, 1]))
+        point1 = np.dot(rot_mat, np.array([xmin, ymin, 1]))
+        point2 = np.dot(rot_mat, np.array([xmax, ymin, 1]))
+        point3 = np.dot(rot_mat, np.array([xmax, ymax, 1]))
+        point4 = np.dot(rot_mat, np.array([xmin, ymax, 1]))
+        # concat np.array
+        concat = np.vstack((point1, point2, point3, point4))
+        # change type
+        concat = concat.astype(np.int32)
+        # print(concat)
+        rx, ry, rw, rh = cv2.boundingRect(concat)
+        rotate_box[box_id][0] = rx
+        rotate_box[box_id][1] = ry
+        rotate_box[box_id][2] = rx + rw
+        rotate_box[box_id][3] = ry + rh
+
+    return cv2.warpAffine(
+        img, rot_mat, (int(np.around(nw)), int(np.around(nh))),
+        flags=cv2.INTER_LANCZOS4), rotate_box
+
+def rotate_mask(img,maskpoints,angle, scale=1.):
+    w = img.shape[1]
+    h = img.shape[0]
+    # convet angle into rad
+    rangle = np.deg2rad(angle)  # angle in radians
+    # calculate new image width and height
+    nw = (abs(np.sin(rangle) * h) + abs(np.cos(rangle) * w)) * scale
+    nh = (abs(np.cos(rangle) * h) + abs(np.sin(rangle) * w)) * scale
+    # ask OpenCV for the rotation matrix
+    rot_mat = cv2.getRotationMatrix2D((nw * 0.5, nh * 0.5), angle, scale)
+    # calculate the move from the old center to the new center combined
+    # with the rotation
+
+    rot_move = np.dot(rot_mat, np.array([(nw - w) * 0.5, (nh - h) * 0.5, 0]))
+
+    # the move only affects the translation, so update the translation
+    # part of the transform
+
+    rot_mat[0, 2] += rot_move[0]
+    rot_mat[1, 2] += rot_move[1]
+
+    rotate_maskann = maskpoints.copy()
+    for mask_id in range(len(rotate_maskann)):
+        for mask_num in range(len(rotate_maskann[mask_id])):
+            xpoint=rotate_maskann[mask_id][mask_num][0]
+            ypoint=rotate_maskann[mask_id][mask_num][1]
+            rotpoint = np.dot(rot_mat, np.array([xpoint, ypoint, 1]))
+            rotate_maskann[mask_id][mask_num]=rotpoint
+
+    return cv2.warpAffine(
+        img, rot_mat, (int(np.around(nw)), int(np.around(nh))),
+        flags=cv2.INTER_LANCZOS4),rotate_maskann
+
+def gamma_trans(img,gamma=1.0):
+    gamma_table = [np.power(x, gamma)  for x in range(256)]
+    gamma_table = np.array(gamma_table)
+    src = cv2.LUT(img, gamma_table)
+    cv2.normalize(src, src, 0, 255, cv2.NORM_MINMAX)
+    src = src.astype(np.uint8)
+    return src
 
 def load_mosaic(self, index):
     # loads images in a mosaic
@@ -615,6 +760,53 @@ def load_mosaic(self, index):
     for i, index in enumerate(indices):
         # Load image
         img, _, (h, w) = load_image(self, index)
+
+        # Labels
+        x = self.labels[index].copy()
+        labels = x.copy()
+
+        rotate90 = True
+        if rotate90 and random.random() < 0.5:
+            angle = random.choice([90, 180, 270])
+            if x.size > 0:  # Normalized xywh to pixel xyxy format
+                labels[:, 1] = w * (x[:, 1] - x[:, 3] / 2)
+                labels[:, 2] = h * (x[:, 2] - x[:, 4] / 2)
+                labels[:, 3] = w * (x[:, 1] + x[:, 3] / 2)
+                labels[:, 4] = h * (x[:, 2] + x[:, 4] / 2)
+                img, labels[:, 1:] = rotate(img, labels[:, 1:], angle)
+
+                (h, w) = img.shape[:2]
+                x[:, 1] = (labels[:, 1] + labels[:, 3]) / (2 * w)
+                x[:, 2] = (labels[:, 2] + labels[:, 4]) / (2 * h)
+                x[:, 3] = (labels[:, 3] - labels[:, 1]) / w
+                x[:, 4] = (labels[:, 4] - labels[:, 2]) / h
+                labels = x.copy()
+
+        #
+        CLAHE = True
+        if CLAHE and random.random() < 0.5:
+            clip_limit = 2.0
+            tile_grid_size = (8, 8)
+            clahe_mat = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+            img[:, :, 0] = clahe_mat.apply(img[:, :, 0])
+            img = cv2.cvtColor(img, cv2.COLOR_LAB2BGR)
+
+        gamma_trans_flag = True
+        if gamma_trans_flag and random.random() < 0.5:
+            gamma = random.choice([0.5, 2])
+            img = gamma_trans(img, gamma)
+
+        # motion_blur
+        blur = True
+        if blur and random.random() < 0.5:
+            img = motion_blur(img)
+
+        #
+        sharpen = True
+        if sharpen and random.random() < 0.5:
+            kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]], np.float32)  # 锐化
+            img = cv2.filter2D(img, -1, kernel=kernel)
 
         # place img in img4
         if i == 0:  # top left
@@ -636,8 +828,8 @@ def load_mosaic(self, index):
         padh = y1a - y1b
 
         # Labels
-        x = self.labels[index]
-        labels = x.copy()
+        # x = self.labels[index]
+        # labels = x.copy()
         if x.size > 0:  # Normalized xywh to pixel xyxy format
             labels[:, 1] = w * (x[:, 1] - x[:, 3] / 2) + padw
             labels[:, 2] = h * (x[:, 2] - x[:, 4] / 2) + padh
