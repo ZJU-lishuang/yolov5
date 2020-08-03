@@ -561,8 +561,8 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                 augment_hsv(img, hgain=hyp['hsv_h'], sgain=hyp['hsv_s'], vgain=hyp['hsv_v'])
 
             # Apply cutouts
-            # if random.random() < 0.9:
-            #     labels = cutout(img, labels)
+            if random.random() < 0.5:
+                labels = cutout(img, labels)
 
         nL = len(labels)  # number of labels
         if nL:

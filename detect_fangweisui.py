@@ -219,28 +219,30 @@ def detect(save_img=False):
                                 vid_writer.write(im0)
 
     for key in img_paths:
+        if not os.path.isdir(os.path.join(img_dir_path, key)):
+            continue
         num_error = 0
         num_correct = 0
         num_miss = 0
-    if answerdict[key] == 1:
-        num_error = num_two[key] + num_three[key]
-        num_correct = num_one[key]
-        num_miss = num_zero[key]
-    elif answerdict[key] == 2:
-        num_error = num_three[key]
-        num_correct = num_two[key]
-        num_miss = num_zero[key] + num_one[key]
-    elif answerdict[key] == 3:
-        num_error = 0
-        num_correct = num_three[key]
-        num_miss = num_zero[key] + num_one[key] + num_two[key]
-    elif answerdict[key] == 0:
-        num_error = num_one[key] + num_two[key] + num_three[key]
-        num_correct = num_zero[key]
-        num_miss = 0
-    file_data += key + ",{},{},{},{},{},{},{},{},{}\n".format(num_zero[key], num_one[key], num_two[key], num_three[key],
-                                                        num_miss,
-                                                        num_correct, num_error)
+        if answerdict[key] == 1:
+            num_error = num_two[key] + num_three[key]
+            num_correct = num_one[key]
+            num_miss = num_zero[key]
+        elif answerdict[key] == 2:
+            num_error = num_three[key]
+            num_correct = num_two[key]
+            num_miss = num_zero[key] + num_one[key]
+        elif answerdict[key] == 3:
+            num_error = 0
+            num_correct = num_three[key]
+            num_miss = num_zero[key] + num_one[key] + num_two[key]
+        elif answerdict[key] == 0:
+            num_error = num_one[key] + num_two[key] + num_three[key]
+            num_correct = num_zero[key]
+            num_miss = 0
+        file_data += key + ",{},{},{},{},{},{},{}\n".format(num_zero[key], num_one[key], num_two[key], num_three[key],
+                                                            num_miss,
+                                                            num_correct, num_error)
 
     with open('yolov5-fangweisui.csv', 'w') as f:
         f.write(file_data)

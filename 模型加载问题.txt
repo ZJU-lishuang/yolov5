@@ -5,3 +5,13 @@ weights='yolov5l.pt'
 google_utils.attempt_download(weights)
 model = torch.load(weights, map_location='cpu')['model'].float() 
 torch.save(model.state_dict(), 'yolov5l_state_dict.pt')
+
+
+
+
+
+from utils import google_utils
+weights='yolov5s.pt'
+google_utils.attempt_download(weights)
+model = torch.load(weights)
+torch.save(model, 'yolov5s_t.pt', _use_new_zipfile_serialization=False)
