@@ -13,7 +13,7 @@ import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
 import torch.utils.data
 import yaml
-from torch.cuda import amp
+# from torch.cuda import amp
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
@@ -230,7 +230,7 @@ def train(hyp, opt, device, tb_writer=None):
     maps = np.zeros(nc)  # mAP per class
     results = (0, 0, 0, 0, 0, 0, 0)  # 'P', 'R', 'mAP', 'F1', 'val GIoU', 'val Objectness', 'val Classification'
     scheduler.last_epoch = start_epoch - 1  # do not move
-    scaler = amp.GradScaler(enabled=cuda)
+    # scaler = amp.GradScaler(enabled=cuda)
     if rank in [0, -1]:
         print('Image sizes %g train, %g test' % (imgsz, imgsz_test))
         print('Using %g dataloader workers' % dataloader.num_workers)
@@ -291,26 +291,41 @@ def train(hyp, opt, device, tb_writer=None):
                     ns = [math.ceil(x * sf / gs) * gs for x in imgs.shape[2:]]  # new shape (stretched to gs-multiple)
                     imgs = F.interpolate(imgs, size=ns, mode='bilinear', align_corners=False)
 
-            # Autocast
-            with amp.autocast(enabled=cuda):
-                # Forward
-                pred = model(imgs)
+            # Forward
+            pred = model(imgs)
 
-                # Loss
-                loss, loss_items = compute_loss(pred, targets.to(device), model)  # scaled by batch_size
-                if rank != -1:
-                    loss *= opt.world_size  # gradient averaged between devices in DDP mode
-                # if not torch.isfinite(loss):
-                #     print('WARNING: non-finite loss, ending training ', loss_items)
-                #     return results
+            # Loss
+            loss, loss_items = compute_loss(pred, targets.to(device), model)  # scaled by batch_size
+            if rank != -1:
+                loss *= opt.world_size  # gradient averaged between devices in DDP mode
+            if not torch.isfinite(loss):
+                print('WARNING: non-finite loss, ending training ', loss_items)
+                return results
 
             # Backward
-            scaler.scale(loss).backward()
+            loss.backward()
+
+            # Autocast
+            # with amp.autocast(enabled=cuda):
+            #     # Forward
+            #     pred = model(imgs)
+
+            #     # Loss
+            #     loss, loss_items = compute_loss(pred, targets.to(device), model)  # scaled by batch_size
+            #     if rank != -1:
+            #         loss *= opt.world_size  # gradient averaged between devices in DDP mode
+            #     # if not torch.isfinite(loss):
+            #     #     print('WARNING: non-finite loss, ending training ', loss_items)
+            #     #     return results
+
+            # # Backward
+            # scaler.scale(loss).backward()
 
             # Optimize
             if ni % accumulate == 0:
-                scaler.step(optimizer)  # optimizer.step
-                scaler.update()
+                # scaler.step(optimizer)  # optimizer.step
+                # scaler.update()
+                optimizer.step()
                 optimizer.zero_grad()
                 if ema is not None:
                     ema.update(model)
