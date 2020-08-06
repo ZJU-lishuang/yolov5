@@ -1,0 +1,1 @@
+python test.py --weights runs/exp4_l/weights/best_l.pt --data ./data/coco_fangweisui_train.yaml --img 640 --verbose

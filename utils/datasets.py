@@ -561,8 +561,8 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                 augment_hsv(img, hgain=hyp['hsv_h'], sgain=hyp['hsv_s'], vgain=hyp['hsv_v'])
 
             # Apply cutouts
-            # if random.random() < 0.9:
-            #     labels = cutout(img, labels)
+            if random.random() < 0.5:
+                labels = cutout(img, labels)
 
         nL = len(labels)  # number of labels
         if nL:
@@ -985,7 +985,8 @@ def random_perspective(img, targets=(), degrees=10, translate=.1, scale=.1, shea
         xy[:, [1, 3]] = xy[:, [1, 3]].clip(0, height)
 
         # filter candidates
-        i = box_candidates(box1=targets[:, 1:5].T * s, box2=xy.T,wh_thr=10,ar_thr=3,area_thr=0.8)
+        # i = box_candidates(box1=targets[:, 1:5].T * s, box2=xy.T,wh_thr=10,ar_thr=3,area_thr=0.8)
+        i = box_candidates(box1=targets[:, 1:5].T * s, box2=xy.T)
         targets = targets[i]
         targets[:, 1:5] = xy[i]
 
@@ -993,7 +994,7 @@ def random_perspective(img, targets=(), degrees=10, translate=.1, scale=.1, shea
 
 
 def box_candidates(box1, box2, wh_thr=2, ar_thr=20, area_thr=0.2):  # box1(4,n), box2(4,n)
-    # Compute candidate boxes: box1 before augment, box2 after augment, wh_thr (pixels), aspect_ratio_thr, area_ratio
+    # Compute candidate boxes: box1 before aaugment, box2 after augment, wh_thr (pixels), aspect_ratio_thr, area_ratio
     w1, h1 = box1[2] - box1[0], box1[3] - box1[1]
     w2, h2 = box2[2] - box2[0], box2[3] - box2[1]
     ar = np.maximum(w2 / (h2 + 1e-16), h2 / (w2 + 1e-16))  # aspect ratio
