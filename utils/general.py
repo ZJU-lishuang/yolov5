@@ -540,7 +540,6 @@ def build_targets(p, targets, model):
             t = t.repeat((5, 1, 1))[j]
             offsets = (torch.zeros_like(gxy)[None] + off[:, None])[j]
         else:
-            else:
             t = targets[0]
             offsets = 0
 
