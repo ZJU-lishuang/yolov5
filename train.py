@@ -2,9 +2,9 @@ import argparse
 import glob
 import math
 import os
+import random
 import time
 from pathlib import Path
-import random
 
 import numpy as np
 import torch.distributed as dist
@@ -13,7 +13,7 @@ import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
 import torch.utils.data
 import yaml
-# from torch.cuda import amp
+from torch.cuda import amp
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
@@ -48,7 +48,7 @@ hyp = {'lr0': 0.01,  # initial learning rate (SGD=1E-2, Adam=1E-3)
        'scale': 0.5,  # image scale (+/- gain)
        'shear': 0.0,  # image shear (+/- deg)
        'perspective': 0.0,  # image perspective (+/- fraction), range 0-0.001
-       'flipud': 0.5,  # image flip up-down (probability)
+       'flipud': 0.0,  # image flip up-down (probability)
        'fliplr': 0.5,  # image flip left-right (probability)
        'mixup': 0.0}  # image mixup (probability)
 
@@ -230,7 +230,7 @@ def train(hyp, opt, device, tb_writer=None):
     maps = np.zeros(nc)  # mAP per class
     results = (0, 0, 0, 0, 0, 0, 0)  # 'P', 'R', 'mAP', 'F1', 'val GIoU', 'val Objectness', 'val Classification'
     scheduler.last_epoch = start_epoch - 1  # do not move
-    # scaler = amp.GradScaler(enabled=cuda)
+    scaler = amp.GradScaler(enabled=cuda)
     if rank in [0, -1]:
         print('Image sizes %g train, %g test' % (imgsz, imgsz_test))
         print('Using %g dataloader workers' % dataloader.num_workers)
@@ -271,6 +271,7 @@ def train(hyp, opt, device, tb_writer=None):
         for i, (imgs, targets, paths, _) in pbar:  # batch -------------------------------------------------------------
             ni = i + nb * epoch  # number integrated batches (since train start)
             imgs = imgs.to(device, non_blocking=True).float() / 255.0  # uint8 to float32, 0-255 to 0.0-1.0
+
             # Warmup
             if ni <= nw:
                 xi = [0, nw]  # x interp
@@ -290,41 +291,26 @@ def train(hyp, opt, device, tb_writer=None):
                     ns = [math.ceil(x * sf / gs) * gs for x in imgs.shape[2:]]  # new shape (stretched to gs-multiple)
                     imgs = F.interpolate(imgs, size=ns, mode='bilinear', align_corners=False)
 
-            # Forward
-            pred = model(imgs)
+            # Autocast
+            with amp.autocast(enabled=cuda):
+                # Forward
+                pred = model(imgs)
 
-            # Loss
-            loss, loss_items = compute_loss(pred, targets.to(device), model)  # scaled by batch_size
-            if rank != -1:
-                loss *= opt.world_size  # gradient averaged between devices in DDP mode
-            if not torch.isfinite(loss):
-                print('WARNING: non-finite loss, ending training ', loss_items)
-                return results
+                # Loss
+                loss, loss_items = compute_loss(pred, targets.to(device), model)  # scaled by batch_size
+                if rank != -1:
+                    loss *= opt.world_size  # gradient averaged between devices in DDP mode
+                # if not torch.isfinite(loss):
+                #     print('WARNING: non-finite loss, ending training ', loss_items)
+                #     return results
 
             # Backward
-            loss.backward()
-
-            # Autocast
-            # with amp.autocast(enabled=cuda):
-            #     # Forward
-            #     pred = model(imgs)
-
-            #     # Loss
-            #     loss, loss_items = compute_loss(pred, targets.to(device), model)  # scaled by batch_size
-            #     if rank != -1:
-            #         loss *= opt.world_size  # gradient averaged between devices in DDP mode
-            #     # if not torch.isfinite(loss):
-            #     #     print('WARNING: non-finite loss, ending training ', loss_items)
-            #     #     return results
-
-            # # Backward
-            # scaler.scale(loss).backward()
+            scaler.scale(loss).backward()
 
             # Optimize
             if ni % accumulate == 0:
-                # scaler.step(optimizer)  # optimizer.step
-                # scaler.update()
-                optimizer.step()
+                scaler.step(optimizer)  # optimizer.step
+                scaler.update()
                 optimizer.zero_grad()
                 if ema is not None:
                     ema.update(model)
@@ -456,8 +442,8 @@ if __name__ == '__main__':
         print(f'Resuming training from {last}')
     opt.weights = last if opt.resume and not opt.weights else opt.weights
 
-    # if opt.local_rank in [-1, 0]:
-    #     check_git_status()
+    if opt.local_rank in [-1, 0]:
+        check_git_status()
     opt.cfg = check_file(opt.cfg)  # check file
     opt.data = check_file(opt.data)  # check file
     if opt.hyp:  # update hyps
