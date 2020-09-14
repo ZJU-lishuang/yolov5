@@ -559,6 +559,209 @@ def build_targets(p, targets, model):
 
     return tcls, tbox, indices, anch
 
+def box_iou_min(box1, box2):
+    # https://github.com/pytorch/vision/blob/master/torchvision/ops/boxes.py
+    """
+    Return intersection-over-union (Jaccard index) of boxes.
+    Both sets of boxes are expected to be in (x1, y1, x2, y2) format.
+    Arguments:
+        box1 (Tensor[N, 4])
+        box2 (Tensor[M, 4])
+    Returns:
+        iou (Tensor[N, M]): the NxM matrix containing the pairwise
+            IoU values for every element in boxes1 and boxes2
+    """
+
+    def box_area(box):
+        # box = 4xn
+        return (box[2] - box[0]) * (box[3] - box[1])
+
+    area1 = box_area(box1.t())
+    area2 = box_area(box2.t())
+
+    # inter(N,M) = (rb(N,M,2) - lt(N,M,2)).clamp(0).prod(2)
+    inter = (torch.min(box1[:, None, 2:], box2[:, 2:]) - torch.max(box1[:, None, :2], box2[:, :2])).clamp(0).prod(2)
+    # return inter / (area1[:, None] + area2 - inter)  # iou = inter / (area1 + area2 - inter)
+    return inter / torch.min(area1[:, None],area2[None,:])
+
+def box_min_distance(box1, box2):
+
+    # def boxpoints(box):
+    #     xmin = box[0]
+    #     ymin = box[1]
+    #     xmax = box[2]
+    #     ymax = box[3]
+    #     return [[xmin,ymin],[xmin,ymax],[xmax,ymin],[xmax,ymax]]
+    #
+    # boxpoints1 = boxpoints(box1)
+    # boxpoints2 = boxpoints(box2)
+
+    xmin1=box1[0]
+    ymin1=box1[1]
+    xmax1=box1[2]
+    ymax1=box1[3]
+
+    xmin2 = box2[0]
+    ymin2 = box2[1]
+    xmax2 = box2[2]
+    ymax2 = box2[3]
+
+    distance11=(xmin1-xmin2)*(xmin1-xmin2)+(ymin1-ymin2)*(ymin1-ymin2)
+    distance12=(xmin1-xmin2)*(xmin1-xmin2)+(ymin1-ymax2)*(ymin1-ymax2)
+    distance13 = (xmin1 - xmax2) * (xmin1 - xmax2) + (ymin1 - ymin2) * (ymin1 - ymin2)
+    distance14 = (xmin1 - xmax2) * (xmin1 - xmax2) + (ymin1 - ymax2) * (ymin1 - ymax2)
+
+    distance21 = (xmin1 - xmin2) * (xmin1 - xmin2) + (ymax1 - ymin2) * (ymax1 - ymin2)
+    distance22 = (xmin1 - xmin2) * (xmin1 - xmin2) + (ymax1 - ymax2) * (ymax1 - ymax2)
+    distance23 = (xmin1 - xmax2) * (xmin1 - xmax2) + (ymax1 - ymin2) * (ymax1 - ymin2)
+    distance24 = (xmin1 - xmax2) * (xmin1 - xmax2) + (ymax1 - ymax2) * (ymax1 - ymax2)
+
+    distance31 = (xmax1 - xmin2) * (xmax1 - xmin2) + (ymin1 - ymin2) * (ymin1 - ymin2)
+    distance32 = (xmax1 - xmin2) * (xmax1 - xmin2) + (ymin1 - ymax2) * (ymin1 - ymax2)
+    distance33 = (xmax1 - xmax2) * (xmax1 - xmax2) + (ymin1 - ymin2) * (ymin1 - ymin2)
+    distance34 = (xmax1 - xmax2) * (xmax1 - xmax2) + (ymin1 - ymax2) * (ymin1 - ymax2)
+
+    distance41 = (xmax1 - xmin2) * (xmax1 - xmin2) + (ymax1 - ymin2) * (ymax1 - ymin2)
+    distance42 = (xmax1 - xmin2) * (xmax1 - xmin2) + (ymax1 - ymax2) * (ymax1 - ymax2)
+    distance43 = (xmax1 - xmax2) * (xmax1 - xmax2) + (ymax1 - ymin2) * (ymax1 - ymin2)
+    distance44 = (xmax1 - xmax2) * (xmax1 - xmax2) + (ymax1 - ymax2) * (ymax1 - ymax2)
+    distancemin=min(distance11,distance12,distance13,distance14,
+                    distance21,distance22,distance23,distance24,
+                    distance31,distance32,distance33,distance34,
+                    distance41,distance42,distance43,distance44)
+    return distancemin
+
+
+
+def non_max_suppression_test(prediction, conf_thres=0.1, iou_thres=0.6, merge=False, classes=None, agnostic=False):
+    """Performs Non-Maximum Suppression (NMS) on inference results
+
+    Returns:
+         detections with shape: nx6 (x1, y1, x2, y2, conf, cls)
+    """
+    if prediction.dtype is torch.float16:
+        prediction = prediction.float()  # to FP32
+
+    nc = prediction[0].shape[1] - 5  # number of classes
+    xc = prediction[..., 4] > conf_thres  # candidates
+
+    # Settings
+    min_wh, max_wh = 2, 4096  # (pixels) minimum and maximum box width and height
+    max_det = 300  # maximum number of detections per image
+    time_limit = 10.0  # seconds to quit after
+    redundant = True  # require redundant detections
+    multi_label = nc > 1  # multiple labels per box (adds 0.5ms/img)
+    #     multi_label=False
+
+    t = time.time()
+    output = [None] * prediction.shape[0]
+    for xi, x in enumerate(prediction):  # image index, image inference
+        # Apply constraints
+        # x[((x[..., 2:4] < min_wh) | (x[..., 2:4] > max_wh)).any(1), 4] = 0  # width-height
+        x = x[xc[xi]]  # confidence
+
+        # If none remain process next image
+        if not x.shape[0]:
+            continue
+
+        # Compute conf
+        x[:, 5:] *= x[:, 4:5]  # conf = obj_conf * cls_conf
+
+        # Box (center x, center y, width, height) to (x1, y1, x2, y2)
+        box = xywh2xyxy(x[:, :4])
+
+        # Detections matrix nx6 (xyxy, conf, cls)
+        if multi_label:
+            i, j = (x[:, 5:] > conf_thres).nonzero().t()
+            x = torch.cat((box[i], x[i, j + 5, None], j[:, None].float()), 1)
+        else:  # best class only
+            conf, j = x[:, 5:].max(1, keepdim=True)
+            x = torch.cat((box, conf, j.float()), 1)[conf.view(-1) > conf_thres]
+
+        # Filter by class
+        # if classes:
+        #     x = x[(x[:, 5:6] == torch.tensor(classes, device=x.device)).any(1)]
+
+        # Apply finite constraint
+        # if not torch.isfinite(x).all():
+        #     x = x[torch.isfinite(x).all(1)]
+
+        # If none remain process next image
+        n = x.shape[0]  # number of boxes
+        if not n:
+            continue
+
+        # Sort by confidence
+        # x = x[x[:, 4].argsort(descending=True)]
+
+        # Batched NMS
+        c = x[:, 5:6] * (0 if agnostic else max_wh)  # classes
+        boxes, scores = x[:, :4] + c, x[:, 4]  # boxes (offset by class), scores
+        i = torchvision.ops.boxes.nms(boxes, scores, iou_thres)
+        if i.shape[0] > max_det:  # limit detections
+            i = i[:max_det]
+        if merge and (1 < n < 3E3):  # Merge NMS (boxes merged using weighted mean)
+            try:  # update boxes as boxes(i,4) = weights(i,n) * boxes(n,4)
+                iou = box_iou(boxes[i], boxes) > iou_thres  # iou matrix
+                weights = iou * scores[None]  # box weights
+                x[i, :4] = torch.mm(weights, x[:, :4]).float() / weights.sum(1, keepdim=True)  # merged boxes
+                if redundant:
+                    i = i[iou.sum(1) > 1]  # require redundancy
+            except:  # possible CUDA error https://github.com/ultralytics/yolov3/issues/1139
+                print(x, i, x.shape, i.shape)
+                pass
+
+        # output[xi] = x[i]
+
+        # tmpx=x[i]  #所有类别做一次iou=0.9的过滤
+        # c = tmpx[:, 5:6] * 0 # classes
+        # boxes, scores = tmpx[:, :4] + c, tmpx[:, 4]  # boxes (offset by class), scores
+        # i = torchvision.ops.boxes.nms(boxes, scores, 0.75)
+        # output[xi]=tmpx[i]
+        #
+        # tmpx=tmpx[i]
+        #
+        tmpx=x[i]
+        #同类别框相互包裹，去除低置信度，减少误检
+        boxes, scores = tmpx[:, :4] , tmpx[:, 4]
+        ioumin=box_iou_min(boxes, boxes)
+        classes = tmpx[:,5]
+        for class1 in range(len(classes)):
+            for class2 in range(len(classes)):
+                if scores[class1]>0.1 and scores[class2]>0.1 and class1 != class2 and classes[class1] == classes[class2] and ioumin[class1][class2] >0.85:
+                    if scores[class2]>scores[class1]:
+                        scores[class1]=0
+                    else:
+                        scores[class2]=0
+        # output[xi] = tmpx[scores>0.1]  #outputs
+
+        #一个头部框属于两个身体框，去除一个
+        # tmpx = tmpx[i]
+        tmpx = tmpx[scores > 0.1]
+        boxes, scores = tmpx[:, :4], tmpx[:, 4]
+        ioumin = box_iou_min(boxes, boxes)
+        classes = tmpx[:, 5]
+        for class1 in range(len(classes)):
+            if classes[class1] == 1:
+                if (ioumin[class1][classes==0] > 0.85).sum()>1:
+                    check_index=[]
+                    for class2 in range(len(classes)):
+                        if classes[class2]==0 and ioumin[class1][class2] > 0.85:
+                            check_index.append(class2)
+                    mindistance=box_min_distance(boxes[check_index[0]],boxes[check_index[1]])
+                    if mindistance.sqrt() < 10:
+                        if scores[check_index[0]] > scores[check_index[1]]:
+                            scores[check_index[1]]=0
+                        else:
+                            scores[check_index[0]] = 0
+        output[xi] = tmpx[scores > 0.1]  # outputs
+
+        if (time.time() - t) > time_limit:
+            # assert 0
+            break  # time limit exceeded
+
+    return output
+
 
 def non_max_suppression(prediction, conf_thres=0.1, iou_thres=0.6, merge=False, classes=None, agnostic=False):
     """Performs Non-Maximum Suppression (NMS) on inference results
