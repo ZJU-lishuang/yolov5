@@ -7,7 +7,8 @@ from utils.datasets import *
 # from utils.utils import *
 from utils.general import (
     check_img_size, non_max_suppression, apply_classifier, scale_coords, xyxy2xywh, plot_one_box, strip_optimizer)
-from utils.torch_utils import select_device, load_classifier, time_synchronized
+from utils.torch_utils import select_device, load_classifier, time_synchronized,initialize_weights
+# from modelsori import *
 
 def point_in_box(points,polygon):
     inside=False
@@ -28,10 +29,18 @@ def detect(save_img=False):
         shutil.rmtree(out)  # delete output folder
     os.makedirs(out)  # make new output folder
     half = device.type != 'cpu'  # half precision only supported on CUDA
+    half=False
 
     # Load model
     model = attempt_load(weights, map_location=device)  # load FP32 model
     imgsz = check_img_size(imgsz, s=model.stride.max())  # check img_size
+
+    # model = Darknet('cfg/prune_0.8_yolov3-spp.cfg', (opt.img_size, opt.img_size)).to(device)
+    # initialize_weights(model)
+    # model.load_state_dict(torch.load('weights/prune_0.8_yolov3-spp-ultralytics.pt')['model'])
+    # model.eval()
+    # stride = [8, 16, 32]
+    # imgsz = check_img_size(imgsz, s=max(stride))  # check img_size
     if half:
         model.half()  # to FP16
 
@@ -54,6 +63,7 @@ def detect(save_img=False):
 
     # Get names and colors
     names = model.module.names if hasattr(model, 'module') else model.names
+    # names = ['1', '2']
     colors = [[random.randint(0, 255) for _ in range(3)] for _ in range(len(names))]
 
     # Run inference
@@ -272,7 +282,7 @@ def detect(save_img=False):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', nargs='+', type=str, default='yolov5s.pt', help='model.pt path(s)')
+    parser.add_argument('--weights', nargs='+', type=str, default='/home/lishuang/Disk/remote/pycharm/yolov5/runs/last_s.pt', help='model.pt path(s)')
     parser.add_argument('--source', type=str, default='inference/images', help='source')  # file/folder, 0 for webcam
     parser.add_argument('--output', type=str, default='inference/output_video', help='output folder')  # output folder
     parser.add_argument('--img-size', type=int, default=640, help='inference size (pixels)')

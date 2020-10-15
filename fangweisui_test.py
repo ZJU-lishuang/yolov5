@@ -7,8 +7,8 @@ from utils.datasets import *
 # from utils.utils import *
 from utils.general import (
     check_img_size, non_max_suppression,non_max_suppression_test, apply_classifier, scale_coords, xyxy2xywh, plot_one_box, strip_optimizer)
-from utils.torch_utils import select_device, load_classifier, time_synchronized
-
+from utils.torch_utils import select_device, load_classifier, time_synchronized,initialize_weights
+from modelsori import *
 
 def detect(number_person):
     out, source, weights, view_img, save_txt, imgsz = \
@@ -22,10 +22,20 @@ def detect(number_person):
     if not os.path.exists(out):
         os.makedirs(out)  # make new output folder
     half = device.type != 'cpu'  # half precision only supported on CUDA
+    half=False
 
     # Load model
-    model = attempt_load(weights, map_location=device)  # load FP32 model
-    imgsz = check_img_size(imgsz, s=model.stride.max())  # check img_size
+    # model = attempt_load(weights, map_location=device)  # load FP32 model
+    # imgsz = check_img_size(imgsz, s=model.stride.max())  # check img_size
+
+    # model=torch.load(weights, map_location=device)['model'].float().eval()
+
+    model = Darknet('cfg/prune_0.8_yolov3-spp.cfg', (opt.img_size, opt.img_size)).to(device)
+    initialize_weights(model)
+    model.load_state_dict(torch.load('weights/prune_0.8_yolov3-spp-ultralytics.pt')['model'])
+    model.eval()
+    stride = [8, 16, 32]
+    imgsz = check_img_size(imgsz, s=max(stride))  # check img_size
     if half:
         model.half()  # to FP16
 
@@ -40,7 +50,8 @@ def detect(number_person):
     vid_path, vid_writer = None, None
 
     # Get names and colors
-    names = model.module.names if hasattr(model, 'module') else model.names
+    # names = model.module.names if hasattr(model, 'module') else model.names
+    names = ['1', '2']
     colors = [[random.randint(0, 255) for _ in range(3)] for _ in range(len(names))]
 
     # Run inference
@@ -49,10 +60,14 @@ def detect(number_person):
     _ = model(img.half() if half else img) if device.type != 'cpu' else None  # run once
 
     for dirs in os.listdir(source):
+        # if dirs !='WH':
+        #     continue
         src = os.path.join(source, dirs)
         save_img = True
         dataset = LoadImages(src, img_size=imgsz)
         for path, img, im0s, vid_cap in dataset:
+            # if os.path.basename(path)!='2_31746253093C100D_2018-12-10-21-56-37-998_0_75_636_307_6.jpg':
+            #     continue
             img = torch.from_numpy(img).to(device)
             img = img.half() if half else img.float()  # uint8 to fp16/32
             img /= 255.0  # 0 - 255 to 0.0 - 1.0
@@ -65,6 +80,8 @@ def detect(number_person):
 
             # Apply NMS
             pred = non_max_suppression_test(pred, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms)
+            # pred = non_max_suppression(pred, opt.conf_thres, opt.iou_thres, classes=opt.classes,
+            #                                 agnostic=opt.agnostic_nms)
             t2 = time_synchronized()
 
             # Apply Classifier
@@ -108,10 +125,10 @@ def detect(number_person):
                             plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=3)
 
                     if len(results) == 2:
-                        if (results[0] == number_person) | (results[1] == number_person):
-                            tmp = "corr"
-                        elif (results[0] > number_person) | (results[1] > number_person):
+                        if (results[0] > number_person) | (results[1] > number_person):
                             tmp = "err"
+                        elif (results[0] == number_person) | (results[1] == number_person):
+                            tmp = "corr"
                         else:
                             tmp = "miss"
                     elif len(results) == 1:
@@ -164,9 +181,9 @@ def detect(number_person):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()  #/home/lzm/Disk3T/1-FWS_data/TestData_image/TX2_Test_data/double_company
-    parser.add_argument('--weights', nargs='+', type=str, default='/home/lishuang/Disk/remote/pycharm/yolov5/runs/last_m.pt', help='model.pt path(s)')
+    parser.add_argument('--weights', nargs='+', type=str, default='/home/lishuang/Disk/remote/pycharm/yolov5/runs/last_s_prune.pt', help='model.pt path(s)')
     parser.add_argument('--source', type=str, default='/home/lishuang/Disk/shengshi_data/anti_tail_test_dataset/Data_of_each_scene', help='source')  # file/folder, 0 for webcam
-    parser.add_argument('--output', type=str, default='/home/lishuang/Disk/remote/pycharm/yolov5m_416_04_last', help='output folder')  # output folder
+    parser.add_argument('--output', type=str, default='/home/lishuang/Disk/remote/pycharm/yolov5s_416_04_last', help='output folder')  # output folder
     parser.add_argument('--img-size', type=int, default=416, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.4, help='object confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.5, help='IOU threshold for NMS')
@@ -179,6 +196,7 @@ if __name__ == '__main__':
     parser.add_argument('--update', action='store_true', help='update all models')
     opt = parser.parse_args()
     print(opt)
+    number_person=1
     if os.path.basename(opt.source)=="Data_of_each_scene":
         number_person = 1
     elif os.path.basename(opt.source)=="double_company":
