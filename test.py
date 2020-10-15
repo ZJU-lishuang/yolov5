@@ -17,6 +17,7 @@ from utils.general import (
     scale_coords, xyxy2xywh, clip_coords, plot_images, xywh2xyxy, box_iou, output_to_target, ap_per_class)
 from utils.torch_utils import select_device, time_synchronized
 
+from utils.datasets import LoadImagesAndLabels
 
 def test(data,
          weights=None,
@@ -80,6 +81,16 @@ def test(data,
         dataloader = create_dataloader(path, imgsz, batch_size, model.stride.max(), opt,
                                        hyp=None, augment=False, cache=False, pad=0.5, rect=True)[0]
 
+    # path =data['val']  # path to val/test images
+    # # Dataloader
+    # dataset = LoadImagesAndLabels(path, imgsz, batch_size)
+    # dataloader = torch.utils.data.DataLoader(dataset,
+    #                         batch_size=batch_size,
+    #                         num_workers=min([os.cpu_count(), batch_size, 16]),
+    #                         pin_memory=True,
+    #                         collate_fn=dataset.collate_fn)
+
+
     seen = 0
     names = model.names if hasattr(model, 'names') else model.module.names
     coco91class = coco80_to_coco91_class()
@@ -103,7 +114,7 @@ def test(data,
             t0 += time_synchronized() - t
 
             # Compute loss
-            if training:  # if model has loss hyperparameters
+            if training and hasattr(model, 'hyp'):  # if model has loss hyperparameters
                 loss += compute_loss([x.float() for x in train_out], targets, model)[1][:3]  # GIoU, obj, cls
 
             # Run NMS
@@ -246,11 +257,11 @@ def test(data,
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='test.py')
-    parser.add_argument('--weights', nargs='+', type=str, default='yolov5s.pt', help='model.pt path(s)')
-    parser.add_argument('--data', type=str, default='data/coco128.yaml', help='*.data path')
+    parser.add_argument('--weights', nargs='+', type=str, default='runs/last_s.pt', help='model.pt path(s)')
+    parser.add_argument('--data', type=str, default='data/coco_fangweisui.yaml', help='*.data path')
     parser.add_argument('--batch-size', type=int, default=32, help='size of each image batch')
-    parser.add_argument('--img-size', type=int, default=640, help='inference size (pixels)')
-    parser.add_argument('--conf-thres', type=float, default=0.001, help='object confidence threshold')
+    parser.add_argument('--img-size', type=int, default=416, help='inference size (pixels)')
+    parser.add_argument('--conf-thres', type=float, default=0.1, help='object confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.65, help='IOU threshold for NMS')
     parser.add_argument('--save-json', action='store_true', help='save a cocoapi-compatible JSON results file')
     parser.add_argument('--task', default='val', help="'val', 'test', 'study'")
