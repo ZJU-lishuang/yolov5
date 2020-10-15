@@ -27,6 +27,9 @@ from utils.general import (
     get_latest_run, check_git_status, check_file, increment_dir, print_mutation, plot_evolution)
 from utils.google_utils import attempt_download
 from utils.torch_utils import init_seeds, ModelEMA, select_device
+from utils.prune_utils import parse_module_defs,parse_module_defs2,gather_bn_weights,get_sr_flag,BNOptimizer
+
+from modelsori import *
 
 # Hyperparameters
 hyp = {'lr0': 0.01,  # initial learning rate (SGD=1E-2, Adam=1E-3)
@@ -52,6 +55,221 @@ hyp = {'lr0': 0.01,  # initial learning rate (SGD=1E-2, Adam=1E-3)
        'fliplr': 0.5,  # image flip left-right (probability)
        'mixup': 0.0}  # image mixup (probability)
 
+def copy_weight(modelyolov5,model):
+    focus = list(modelyolov5.model.children())[0]
+    model.module_list[1][0] = focus.conv.conv
+    model.module_list[1][1] = focus.conv.bn
+    model.module_list[1][2] = focus.conv.act
+    conv1 = list(modelyolov5.model.children())[1]
+    model.module_list[2][0] = conv1.conv
+    model.module_list[2][1] = conv1.bn
+    model.module_list[2][2] = conv1.act
+    cspnet1 = list(modelyolov5.model.children())[2]
+    model.module_list[3][0] = cspnet1.cv2
+    model.module_list[5][0] = cspnet1.cv1.conv
+    model.module_list[5][1] = cspnet1.cv1.bn
+    model.module_list[5][2] = cspnet1.cv1.act
+    model.module_list[9][0] = cspnet1.cv3
+    model.module_list[11][0] = cspnet1.bn
+    model.module_list[11][1] = cspnet1.act
+    model.module_list[6][0] = cspnet1.m[0].cv1.conv
+    model.module_list[6][1] = cspnet1.m[0].cv1.bn
+    model.module_list[6][2] = cspnet1.m[0].cv1.act
+    model.module_list[7][0] = cspnet1.m[0].cv2.conv
+    model.module_list[7][1] = cspnet1.m[0].cv2.bn
+    model.module_list[7][2] = cspnet1.m[0].cv2.act
+    model.module_list[12][0] = cspnet1.cv4.conv
+    model.module_list[12][1] = cspnet1.cv4.bn
+    model.module_list[12][2] = cspnet1.cv4.act
+    conv2 = list(modelyolov5.model.children())[3]
+    model.module_list[13][0] = conv2.conv
+    model.module_list[13][1] = conv2.bn
+    model.module_list[13][2] = conv2.act
+    cspnet2 = list(modelyolov5.model.children())[4]
+    model.module_list[14][0] = cspnet2.cv2
+    model.module_list[16][0] = cspnet2.cv1.conv
+    model.module_list[16][1] = cspnet2.cv1.bn
+    model.module_list[16][2] = cspnet2.cv1.act
+    model.module_list[26][0] = cspnet2.cv3
+    model.module_list[28][0] = cspnet2.bn
+    model.module_list[28][1] = cspnet2.act
+    model.module_list[29][0] = cspnet2.cv4.conv
+    model.module_list[29][1] = cspnet2.cv4.bn
+    model.module_list[29][2] = cspnet2.cv4.act
+    model.module_list[17][0] = cspnet2.m[0].cv1.conv
+    model.module_list[17][1] = cspnet2.m[0].cv1.bn
+    model.module_list[17][2] = cspnet2.m[0].cv1.act
+    model.module_list[18][0] = cspnet2.m[0].cv2.conv
+    model.module_list[18][1] = cspnet2.m[0].cv2.bn
+    model.module_list[18][2] = cspnet2.m[0].cv2.act
+    model.module_list[20][0] = cspnet2.m[1].cv1.conv
+    model.module_list[20][1] = cspnet2.m[1].cv1.bn
+    model.module_list[20][2] = cspnet2.m[1].cv1.act
+    model.module_list[21][0] = cspnet2.m[1].cv2.conv
+    model.module_list[21][1] = cspnet2.m[1].cv2.bn
+    model.module_list[21][2] = cspnet2.m[1].cv2.act
+    model.module_list[23][0] = cspnet2.m[2].cv1.conv
+    model.module_list[23][1] = cspnet2.m[2].cv1.bn
+    model.module_list[23][2] = cspnet2.m[2].cv1.act
+    model.module_list[24][0] = cspnet2.m[2].cv2.conv
+    model.module_list[24][1] = cspnet2.m[2].cv2.bn
+    model.module_list[24][2] = cspnet2.m[2].cv2.act
+    conv3 = list(modelyolov5.model.children())[5]
+    model.module_list[30][0] = conv3.conv
+    model.module_list[30][1] = conv3.bn
+    model.module_list[30][2] = conv3.act
+    cspnet3 = list(modelyolov5.model.children())[6]
+    model.module_list[31][0] = cspnet3.cv2
+    model.module_list[33][0] = cspnet3.cv1.conv
+    model.module_list[33][1] = cspnet3.cv1.bn
+    model.module_list[33][2] = cspnet3.cv1.act
+    model.module_list[43][0] = cspnet3.cv3
+    model.module_list[45][0] = cspnet3.bn
+    model.module_list[45][1] = cspnet3.act
+    model.module_list[46][0] = cspnet3.cv4.conv
+    model.module_list[46][1] = cspnet3.cv4.bn
+    model.module_list[46][2] = cspnet3.cv4.act
+    model.module_list[34][0] = cspnet3.m[0].cv1.conv
+    model.module_list[34][1] = cspnet3.m[0].cv1.bn
+    model.module_list[34][2] = cspnet3.m[0].cv1.act
+    model.module_list[35][0] = cspnet3.m[0].cv2.conv
+    model.module_list[35][1] = cspnet3.m[0].cv2.bn
+    model.module_list[35][2] = cspnet3.m[0].cv2.act
+    model.module_list[37][0] = cspnet3.m[1].cv1.conv
+    model.module_list[37][1] = cspnet3.m[1].cv1.bn
+    model.module_list[37][2] = cspnet3.m[1].cv1.act
+    model.module_list[38][0] = cspnet3.m[1].cv2.conv
+    model.module_list[38][1] = cspnet3.m[1].cv2.bn
+    model.module_list[38][2] = cspnet3.m[1].cv2.act
+    model.module_list[40][0] = cspnet3.m[2].cv1.conv
+    model.module_list[40][1] = cspnet3.m[2].cv1.bn
+    model.module_list[40][2] = cspnet3.m[2].cv1.act
+    model.module_list[41][0] = cspnet3.m[2].cv2.conv
+    model.module_list[41][1] = cspnet3.m[2].cv2.bn
+    model.module_list[41][2] = cspnet3.m[2].cv2.act
+    conv4 = list(modelyolov5.model.children())[7]
+    model.module_list[47][0] = conv4.conv
+    model.module_list[47][1] = conv4.bn
+    model.module_list[47][2] = conv4.act
+    spp = list(modelyolov5.model.children())[8]
+    model.module_list[48][0] = spp.cv1.conv
+    model.module_list[48][1] = spp.cv1.bn
+    model.module_list[48][2] = spp.cv1.act
+    model.module_list[49] = spp.m[0]
+    model.module_list[51] = spp.m[1]
+    model.module_list[53] = spp.m[2]
+    model.module_list[55][0] = spp.cv2.conv
+    model.module_list[55][1] = spp.cv2.bn
+    model.module_list[55][2] = spp.cv2.act
+    cspnet4 = list(modelyolov5.model.children())[9]
+    model.module_list[56][0] = cspnet4.cv2
+    model.module_list[58][0] = cspnet4.cv1.conv
+    model.module_list[58][1] = cspnet4.cv1.bn
+    model.module_list[58][2] = cspnet4.cv1.act
+    model.module_list[61][0] = cspnet4.cv3
+    model.module_list[63][0] = cspnet4.bn
+    model.module_list[63][1] = cspnet4.act
+    model.module_list[64][0] = cspnet4.cv4.conv
+    model.module_list[64][1] = cspnet4.cv4.bn
+    model.module_list[64][2] = cspnet4.cv4.act
+    model.module_list[59][0] = cspnet4.m[0].cv1.conv
+    model.module_list[59][1] = cspnet4.m[0].cv1.bn
+    model.module_list[59][2] = cspnet4.m[0].cv1.act
+    model.module_list[60][0] = cspnet4.m[0].cv2.conv
+    model.module_list[60][1] = cspnet4.m[0].cv2.bn
+    model.module_list[60][2] = cspnet4.m[0].cv2.act
+    conv5 = list(modelyolov5.model.children())[10]
+    model.module_list[65][0] = conv5.conv
+    model.module_list[65][1] = conv5.bn
+    model.module_list[65][2] = conv5.act
+    upsample1 = list(modelyolov5.model.children())[11]
+    model.module_list[66] = upsample1
+    cspnet5 = list(modelyolov5.model.children())[13]
+    model.module_list[68][0] = cspnet5.cv2
+    model.module_list[70][0] = cspnet5.cv1.conv
+    model.module_list[70][1] = cspnet5.cv1.bn
+    model.module_list[70][2] = cspnet5.cv1.act
+    model.module_list[73][0] = cspnet5.cv3
+    model.module_list[75][0] = cspnet5.bn
+    model.module_list[75][1] = cspnet5.act
+    model.module_list[76][0] = cspnet5.cv4.conv
+    model.module_list[76][1] = cspnet5.cv4.bn
+    model.module_list[76][2] = cspnet5.cv4.act
+    model.module_list[71][0] = cspnet5.m[0].cv1.conv
+    model.module_list[71][1] = cspnet5.m[0].cv1.bn
+    model.module_list[71][2] = cspnet5.m[0].cv1.act
+    model.module_list[72][0] = cspnet5.m[0].cv2.conv
+    model.module_list[72][1] = cspnet5.m[0].cv2.bn
+    model.module_list[72][2] = cspnet5.m[0].cv2.act
+    conv6 = list(modelyolov5.model.children())[14]
+    model.module_list[77][0] = conv6.conv
+    model.module_list[77][1] = conv6.bn
+    model.module_list[77][2] = conv6.act
+    upsample2 = list(modelyolov5.model.children())[15]
+    model.module_list[78] = upsample2
+    cspnet6 = list(modelyolov5.model.children())[17]
+    model.module_list[80][0] = cspnet6.cv2
+    model.module_list[82][0] = cspnet6.cv1.conv
+    model.module_list[82][1] = cspnet6.cv1.bn
+    model.module_list[82][2] = cspnet6.cv1.act
+    model.module_list[85][0] = cspnet6.cv3
+    model.module_list[87][0] = cspnet6.bn
+    model.module_list[87][1] = cspnet6.act
+    model.module_list[88][0] = cspnet6.cv4.conv
+    model.module_list[88][1] = cspnet6.cv4.bn
+    model.module_list[88][2] = cspnet6.cv4.act
+    model.module_list[83][0] = cspnet6.m[0].cv1.conv
+    model.module_list[83][1] = cspnet6.m[0].cv1.bn
+    model.module_list[83][2] = cspnet6.m[0].cv1.act
+    model.module_list[84][0] = cspnet6.m[0].cv2.conv
+    model.module_list[84][1] = cspnet6.m[0].cv2.bn
+    model.module_list[84][2] = cspnet6.m[0].cv2.act
+    conv7 = list(modelyolov5.model.children())[18]
+    model.module_list[92][0] = conv7.conv
+    model.module_list[92][1] = conv7.bn
+    model.module_list[92][2] = conv7.act
+    cspnet7 = list(modelyolov5.model.children())[20]
+    model.module_list[94][0] = cspnet7.cv2
+    model.module_list[96][0] = cspnet7.cv1.conv
+    model.module_list[96][1] = cspnet7.cv1.bn
+    model.module_list[96][2] = cspnet7.cv1.act
+    model.module_list[99][0] = cspnet7.cv3
+    model.module_list[101][0] = cspnet7.bn
+    model.module_list[101][1] = cspnet7.act
+    model.module_list[102][0] = cspnet7.cv4.conv
+    model.module_list[102][1] = cspnet7.cv4.bn
+    model.module_list[102][2] = cspnet7.cv4.act
+    model.module_list[97][0] = cspnet7.m[0].cv1.conv
+    model.module_list[97][1] = cspnet7.m[0].cv1.bn
+    model.module_list[97][2] = cspnet7.m[0].cv1.act
+    model.module_list[98][0] = cspnet7.m[0].cv2.conv
+    model.module_list[98][1] = cspnet7.m[0].cv2.bn
+    model.module_list[98][2] = cspnet7.m[0].cv2.act
+    conv8 = list(modelyolov5.model.children())[21]
+    model.module_list[106][0] = conv8.conv
+    model.module_list[106][1] = conv8.bn
+    model.module_list[106][2] = conv8.act
+    cspnet8 = list(modelyolov5.model.children())[23]
+    model.module_list[108][0] = cspnet8.cv2
+    model.module_list[110][0] = cspnet8.cv1.conv
+    model.module_list[110][1] = cspnet8.cv1.bn
+    model.module_list[110][2] = cspnet8.cv1.act
+    model.module_list[113][0] = cspnet8.cv3
+    model.module_list[115][0] = cspnet8.bn
+    model.module_list[115][1] = cspnet8.act
+    model.module_list[116][0] = cspnet8.cv4.conv
+    model.module_list[116][1] = cspnet8.cv4.bn
+    model.module_list[116][2] = cspnet8.cv4.act
+    model.module_list[111][0] = cspnet8.m[0].cv1.conv
+    model.module_list[111][1] = cspnet8.m[0].cv1.bn
+    model.module_list[111][2] = cspnet8.m[0].cv1.act
+    model.module_list[112][0] = cspnet8.m[0].cv2.conv
+    model.module_list[112][1] = cspnet8.m[0].cv2.bn
+    model.module_list[112][2] = cspnet8.m[0].cv2.act
+    detect = list(modelyolov5.model.children())[24]
+    model.module_list[89][0] = detect.m[0]
+    model.module_list[103][0] = detect.m[1]
+    model.module_list[117][0] = detect.m[2]
 
 def train(hyp, opt, device, tb_writer=None):
     print(f'Hyperparameters {hyp}')
@@ -88,6 +306,8 @@ def train(hyp, opt, device, tb_writer=None):
 
     # Create model
     model = Model(opt.cfg, nc=nc).to(device)
+
+    cfg_model = Darknet('cfg/yolov5s.cfg', (416, 416)).to(device)
 
     # Image sizes
     gs = int(max(model.stride))  # grid size (max stride)
@@ -170,6 +390,18 @@ def train(hyp, opt, device, tb_writer=None):
 
         del ckpt
 
+    copy_weight(model,cfg_model)
+    # 剪枝操作  sr开启稀疏训练  prune 不同的剪枝策略
+    # 剪枝操作
+    if opt.prune == 1:
+        CBL_idx, _, prune_idx, shortcut_idx, _ = parse_module_defs2(cfg_model.module_defs)
+        if opt.sr:
+            print('shortcut sparse training')
+    elif opt.prune == 0:
+        CBL_idx, _, prune_idx = parse_module_defs(cfg_model.module_defs)
+        if opt.sr:
+            print('normal sparse training ')
+
     # DP mode
     if cuda and rank == -1 and torch.cuda.device_count() > 1:
         model = torch.nn.DataParallel(model)
@@ -223,6 +455,11 @@ def train(hyp, opt, device, tb_writer=None):
         if not opt.noautoanchor:
             check_anchors(dataset, model=model, thr=hyp['anchor_t'], imgsz=imgsz)
 
+
+    for idx in prune_idx:
+        bn_weights = gather_bn_weights(cfg_model.module_list, [idx])
+        tb_writer.add_histogram('before_train_perlayer_bn_weights/hist', bn_weights.numpy(), idx, bins='doane')
+
     # Start training
     t0 = time.time()
     nw = max(3 * nb, 1e3)  # number of warmup iterations, max(3 epochs, 1k iterations)
@@ -268,6 +505,7 @@ def train(hyp, opt, device, tb_writer=None):
             print(('\n' + '%10s' * 8) % ('Epoch', 'gpu_mem', 'GIoU', 'obj', 'cls', 'total', 'targets', 'img_size'))
             pbar = tqdm(pbar, total=nb)  # progress bar
         optimizer.zero_grad()
+        sr_flag = get_sr_flag(epoch, opt.sr)
         for i, (imgs, targets, paths, _) in pbar:  # batch -------------------------------------------------------------
             ni = i + nb * epoch  # number integrated batches (since train start)
             imgs = imgs.to(device, non_blocking=True).float() / 255.0  # uint8 to float32, 0-255 to 0.0-1.0
@@ -319,6 +557,12 @@ def train(hyp, opt, device, tb_writer=None):
 
             # # Backward
             # scaler.scale(loss).backward()
+
+            idx2mask = None
+            # if opt.sr and opt.prune==1 and epoch > opt.epochs * 0.5:
+            #     idx2mask = get_mask2(model, prune_idx, 0.85)
+            copy_weight(model,cfg_model)
+            BNOptimizer.updateBN(sr_flag, cfg_model.module_list, opt.s, prune_idx, epoch, idx2mask, opt)
 
             # Optimize
             if ni % accumulate == 0:
@@ -379,6 +623,8 @@ def train(hyp, opt, device, tb_writer=None):
                         'val/giou_loss', 'val/obj_loss', 'val/cls_loss']
                 for x, tag in zip(list(mloss[:-1]) + list(results), tags):
                     tb_writer.add_scalar(tag, x, epoch)
+                bn_weights = gather_bn_weights(cfg_model.module_list, prune_idx)
+                tb_writer.add_histogram('bn_weights/hist', bn_weights.numpy(), epoch, bins='doane')
 
             # Update best mAP
             fi = fitness(np.array(results).reshape(1, -1))  # fitness_i = weighted combination of [P, R, mAP, F1]
@@ -448,6 +694,10 @@ if __name__ == '__main__':
     parser.add_argument('--adam', action='store_true', help='use torch.optim.Adam() optimizer')
     parser.add_argument('--sync-bn', action='store_true', help='use SyncBatchNorm, only available in DDP mode')
     parser.add_argument('--local_rank', type=int, default=-1, help='DDP parameter, do not modify')
+    parser.add_argument('--sparsity-regularization', '-sr', dest='sr', action='store_true',
+                        help='train with channel sparsity regularization')
+    parser.add_argument('--s', type=float, default=0.001, help='scale sparse rate')
+    parser.add_argument('--prune', type=int, default=1, help='0:nomal prune 1:other prune ')
     opt = parser.parse_args()
 
     # Resume
