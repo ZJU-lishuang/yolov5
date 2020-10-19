@@ -28,14 +28,17 @@ def detect(number_person):
     # model = attempt_load(weights, map_location=device)  # load FP32 model
     # imgsz = check_img_size(imgsz, s=model.stride.max())  # check img_size
 
-    # model=torch.load(weights, map_location=device)['model'].float().eval()
-
-    model = Darknet('cfg/prune_0.8_yolov3-spp.cfg', (opt.img_size, opt.img_size)).to(device)
-    initialize_weights(model)
-    model.load_state_dict(torch.load('weights/prune_0.8_yolov3-spp-ultralytics.pt')['model'])
-    model.eval()
+    model=torch.load(weights, map_location=device)['model'].float().eval()
     stride = [8, 16, 32]
     imgsz = check_img_size(imgsz, s=max(stride))  # check img_size
+
+    # model = Darknet('cfg/prune_0.8_yolov3-spp.cfg', (opt.img_size, opt.img_size)).to(device)
+    # initialize_weights(model)
+    # model.load_state_dict(torch.load('weights/prune_0.8_yolov3-spp-ultralytics.pt')['model'])
+    # model.eval()
+    # stride = [8, 16, 32]
+    # imgsz = check_img_size(imgsz, s=max(stride))  # check img_size
+
     if half:
         model.half()  # to FP16
 
@@ -77,12 +80,13 @@ def detect(number_person):
             # Inference
             t1 = time_synchronized()
             pred = model(img, augment=opt.augment)[0]
+            t2 = time_synchronized()
 
             # Apply NMS
             pred = non_max_suppression_test(pred, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms)
             # pred = non_max_suppression(pred, opt.conf_thres, opt.iou_thres, classes=opt.classes,
             #                                 agnostic=opt.agnostic_nms)
-            t2 = time_synchronized()
+            # t2 = time_synchronized()
 
             # Apply Classifier
             if classify:
@@ -181,9 +185,9 @@ def detect(number_person):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()  #/home/lzm/Disk3T/1-FWS_data/TestData_image/TX2_Test_data/double_company
-    parser.add_argument('--weights', nargs='+', type=str, default='/home/lishuang/Disk/remote/pycharm/yolov5/runs/last_s_prune.pt', help='model.pt path(s)')
+    parser.add_argument('--weights', nargs='+', type=str, default='/home/lishuang/Disk/remote/pycharm/yolov5/runs/last_prune_s.pt', help='model.pt path(s)')
     parser.add_argument('--source', type=str, default='/home/lishuang/Disk/shengshi_data/anti_tail_test_dataset/Data_of_each_scene', help='source')  # file/folder, 0 for webcam
-    parser.add_argument('--output', type=str, default='/home/lishuang/Disk/remote/pycharm/yolov5s_416_04_last', help='output folder')  # output folder
+    parser.add_argument('--output', type=str, default='/home/lishuang/Disk/remote/pycharm/yolov5s_416_04_last123', help='output folder')  # output folder
     parser.add_argument('--img-size', type=int, default=416, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.4, help='object confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.5, help='IOU threshold for NMS')
