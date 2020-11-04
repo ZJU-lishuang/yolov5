@@ -87,10 +87,13 @@ def train(hyp, opt, device, tb_writer=None):
     if rank in [-1, 0]:
         for f in glob.glob('*_batch*.jpg') + glob.glob(results_file):
             os.remove(f)
-
+    opt.cfg='cfg/prune_0.4_keep_0.01_yolov5s.cfg'
+    opt.weights='weights/prune_0.4_keep_0.01_last.pt'
+    opt.cfg = 'cfg/yolov5s_tiny.cfg'
+    opt.weights = ''
     # Create model
     # model = Model(opt.cfg, nc=nc).to(device)
-    model = Darknet('cfg/prune_0.8_yolov3-spp.cfg', (opt.img_size[0], opt.img_size[0])).to(device)
+    model = Darknet(opt.cfg, (opt.img_size[0], opt.img_size[0])).to(device)
     initialize_weights(model)
     # cfg_model = Darknet('cfg/yolov5s.cfg', (416, 416)).to(device)
 
@@ -137,8 +140,10 @@ def train(hyp, opt, device, tb_writer=None):
     # plot_lr_scheduler(optimizer, scheduler, epochs)
 
     # Load Model
-    model.load_state_dict(torch.load('weights/prune_0.8_yolov3-spp-ultralytics.pt')['model'])
+    if weights.endswith('.pt'):
+        model.load_state_dict(torch.load(opt.weights)['model'])
     start_epoch, best_fitness = 0, 0.0
+
     # with torch_distributed_zero_first(rank):
     #     attempt_download(weights)
     # start_epoch, best_fitness = 0, 0.0
@@ -232,8 +237,8 @@ def train(hyp, opt, device, tb_writer=None):
             tb_writer.add_histogram('classes', c, 0)
 
         # Check anchors
-        # if not opt.noautoanchor:
-        #     check_anchors(dataset, model=model, thr=hyp['anchor_t'], imgsz=imgsz)
+        if not opt.noautoanchor:
+            check_anchors(dataset, model=model, thr=hyp['anchor_t'], imgsz=imgsz)
 
 
     # Start training
