@@ -10,6 +10,90 @@ from utils.general import (
 from utils.torch_utils import select_device, load_classifier, time_synchronized,initialize_weights
 from modelsori import *
 
+from xml.etree import ElementTree as ET
+
+#创建一级分支object
+def create_object(root,label,xi,yi,xa,ya):#参数依次，树根，xmin，ymin，xmax，ymax
+    #创建一级分支object
+    _object=ET.SubElement(root,'object')
+    #创建二级分支
+    name=ET.SubElement(_object,'name')
+    # name.text='AreaMissing'
+    name.text = str(label)
+    pose=ET.SubElement(_object,'pose')
+    pose.text='Unspecified'
+    truncated=ET.SubElement(_object,'truncated')
+    truncated.text='0'
+    difficult=ET.SubElement(_object,'difficult')
+    difficult.text='0'
+    #创建bndbox
+    bndbox=ET.SubElement(_object,'bndbox')
+    xmin=ET.SubElement(bndbox,'xmin')
+    xmin.text='%s'%xi
+    ymin = ET.SubElement(bndbox, 'ymin')
+    ymin.text = '%s'%yi
+    xmax = ET.SubElement(bndbox, 'xmax')
+    xmax.text = '%s'%xa
+    ymax = ET.SubElement(bndbox, 'ymax')
+    ymax.text = '%s'%ya
+
+#创建xml文件
+def create_tree(image_name):
+    global annotation
+    # 创建树根annotation
+    annotation = ET.Element('annotation')
+    #创建一级分支folder
+    folder = ET.SubElement(annotation,'folder')
+    #添加folder标签内容
+    folder.text=('ls')
+
+    #创建一级分支filename
+    filename=ET.SubElement(annotation,'filename')
+    filename.text=image_name.strip('.jpg')
+
+    #创建一级分支path
+    path=ET.SubElement(annotation,'path')
+    path.text=os.getcwd()+'%s'%image_name.lstrip('.')#用于返回当前工作目录
+
+    #创建一级分支source
+    source=ET.SubElement(annotation,'source')
+    #创建source下的二级分支database
+    database=ET.SubElement(source,'database')
+    database.text='Unknown'
+
+    imgtmp = cv2.imread(image_name)
+    imgheight,imgwidth,imgdepth=imgtmp.shape
+    #创建一级分支size
+    size=ET.SubElement(annotation,'size')
+    #创建size下的二级分支图像的宽、高及depth
+    width=ET.SubElement(size,'width')
+    width.text=str(imgwidth)
+    height=ET.SubElement(size,'height')
+    height.text=str(imgheight)
+    depth = ET.SubElement(size,'depth')
+    depth.text = str(imgdepth)
+
+    #创建一级分支segmented
+    segmented = ET.SubElement(annotation,'segmented')
+    segmented.text = '0'
+
+def pretty_xml(element, indent, newline, level=0):  # elemnt为传进来的Elment类，参数indent用于缩进，newline用于换行
+    if element:  # 判断element是否有子元素
+        if (element.text is None) or element.text.isspace():  # 如果element的text没有内容
+            element.text = newline + indent * (level + 1)
+        else:
+            element.text = newline + indent * (level + 1) + element.text.strip() + newline + indent * (level + 1)
+            # else:  # 此处两行如果把注释去掉，Element的text也会另起一行
+            # element.text = newline + indent * (level + 1) + element.text.strip() + newline + indent * level
+    temp = list(element)  # 将element转成list
+    for subelement in temp:
+        if temp.index(subelement) < (len(temp) - 1):  # 如果不是list的最后一个元素，说明下一个行是同级别元素的起始，缩进应一致
+            subelement.tail = newline + indent * (level + 1)
+        else:  # 如果是list的最后一个元素， 说明下一行是母元素的结束，缩进应该少一个
+            subelement.tail = newline + indent * level
+        pretty_xml(subelement, indent, newline, level=level + 1)  # 对子元素进行递归操作
+
+
 def detect(number_person):
     out, source, weights, view_img, save_txt, imgsz = \
         opt.output, opt.source, opt.weights, opt.view_img, opt.save_txt, opt.img_size
@@ -53,8 +137,8 @@ def detect(number_person):
     vid_path, vid_writer = None, None
 
     # Get names and colors
-    # names = model.module.names if hasattr(model, 'module') else model.names
-    names = ['1', '2']
+    names = model.module.names if hasattr(model, 'module') else model.names
+    # names = ['1', '2']
     colors = [[random.randint(0, 255) for _ in range(3)] for _ in range(len(names))]
 
     # Run inference
@@ -67,6 +151,7 @@ def detect(number_person):
         #     continue
         src = os.path.join(source, dirs)
         save_img = True
+        save_xml = False
         dataset = LoadImages(src, img_size=imgsz)
         for path, img, im0s, vid_cap in dataset:
             # if os.path.basename(path)!='2_31746253093C100D_2018-12-10-21-56-37-998_0_75_636_307_6.jpg':
@@ -103,6 +188,8 @@ def detect(number_person):
                 # txt_path = str(Path(out) / Path(p).stem) + ('_%g' % dataset.frame if dataset.mode == 'video' else '')
                 s += '%gx%g ' % img.shape[2:]  # print string
                 gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
+                results = [0, 0]
+                minconf=1
                 if det is not None and len(det):
                     # Rescale boxes from img_size to im0 size
                     det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
@@ -123,31 +210,52 @@ def detect(number_person):
                         if save_img or view_img:  # Add bbox to image
                             if names[int(cls)] == "1":
                                 results[0] += 1
-                            else:
+                            elif names[int(cls)] == "2":
                                 results[1] += 1
+                            else:
+                                plot_one_box(xyxy, im0, label=None, color=colors[int(cls)], line_thickness=3)
+                                continue
+                            # else:
+                            #     results[1] += 1
+                            minconf=min(conf,minconf)
                             label = '%s %.2f' % (names[int(cls)], conf)
                             plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=3)
 
-                    if len(results) == 2:
-                        if (results[0] > number_person) | (results[1] > number_person):
-                            tmp = "err"
-                        elif (results[0] == number_person) | (results[1] == number_person):
-                            tmp = "corr"
-                        else:
-                            tmp = "miss"
-                    elif len(results) == 1:
-                        if (results[0] == number_person):
-                            tmp = "corr"
-                        elif (results[0] > number_person):
-                            tmp = "err"
-                        else:
-                            tmp = "miss"
+
+
+                if len(results) == 2:
+                    if (results[0] > number_person) | (results[1] > number_person):
+                        tmp = "err"
+                    elif (results[0] == number_person) | (results[1] == number_person):
+                        tmp = "corr"
+                        # if len(det) == 1:
+                        #     tmp = 'single'
+                        # elif minconf < 0.5:
+                        #     tmp='05'
+                        # elif minconf < 0.6:
+                        #     tmp='06'
+                        # elif minconf < 0.7:
+                        #     tmp='07'
+                        # elif minconf < 0.8:
+                        #     tmp = '08'
+
                     else:
                         tmp = "miss"
 
-                    save_path = os.path.join(Path(out), dirs, tmp)#, tmp
-                    if not os.path.exists(save_path):
-                        os.makedirs(save_path)
+
+                elif len(results) == 1:
+                    if (results[0] == number_person):
+                        tmp = "corr"
+                    elif (results[0] > number_person):
+                        tmp = "err"
+                    else:
+                        tmp = "miss"
+                else:
+                    tmp = "miss"
+
+                save_path = os.path.join(Path(out), dirs, tmp)#, tmp
+                if not os.path.exists(save_path):
+                    os.makedirs(save_path)
 
                 # Print time (inference + NMS)
                 print('%sDone. (%.3fs)' % (s, t2 - t1))
@@ -175,6 +283,25 @@ def detect(number_person):
                             vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*fourcc), fps, (w, h))
                         vid_writer.write(im0)
 
+                    if det is not None and len(det) and save_xml:
+                        # xml
+                        output_name=os.path.join(save_path, Path(p).name)
+                        create_tree(output_name)
+                        for *xyxy, conf, cls in det:
+                            label=names[int(cls)]
+                            left,top,right,bottom=torch.tensor(xyxy).view(1, 4).view(-1).tolist()
+                            create_object(annotation, label, left,top, right,bottom)
+
+                        # 将树模型写入xml文件
+                        tree = ET.ElementTree(annotation)
+                        # tree.write('%s.xml' % output_name.rstrip('.jpg'))
+
+                        # tree = ET.ElementTree.parse('%s.xml' % output_name.rstrip('.jpg'))  # 解析movies.xml这个文件
+                        root = tree.getroot()  # 得到根元素，Element类
+                        pretty_xml(root, '\t', '\n')  # 执行美化方法
+                        tree.write('%s.xml' % output_name.rstrip('.jpg'))
+
+
         if save_txt or save_img:
             print('Results saved to %s' % os.getcwd() + os.sep + out)
             # if platform == 'darwin' and not opt.update:  # MacOS
@@ -185,9 +312,9 @@ def detect(number_person):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()  #/home/lzm/Disk3T/1-FWS_data/TestData_image/TX2_Test_data/double_company
-    parser.add_argument('--weights', nargs='+', type=str, default='/home/lishuang/Disk/remote/pycharm/yolov5/runs/last_prune_s.pt', help='model.pt path(s)')
+    parser.add_argument('--weights', nargs='+', type=str, default='/home/lishuang/Disk/remote/pycharm/yolov5/runs/last_s_kunming.pt', help='model.pt path(s)')
     parser.add_argument('--source', type=str, default='/home/lishuang/Disk/shengshi_data/anti_tail_test_dataset/Data_of_each_scene', help='source')  # file/folder, 0 for webcam
-    parser.add_argument('--output', type=str, default='/home/lishuang/Disk/remote/pycharm/yolov5s_416_04_last123', help='output folder')  # output folder
+    parser.add_argument('--output', type=str, default='/home/lishuang/Disk/remote/pycharm/kunming', help='output folder')  # output folder
     parser.add_argument('--img-size', type=int, default=416, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.4, help='object confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.5, help='IOU threshold for NMS')
