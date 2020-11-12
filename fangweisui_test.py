@@ -109,12 +109,12 @@ def detect(number_person):
     half=False
 
     # Load model
-    # model = attempt_load(weights, map_location=device)  # load FP32 model
-    # imgsz = check_img_size(imgsz, s=model.stride.max())  # check img_size
+    model = attempt_load(weights, map_location=device)  # load FP32 model
+    imgsz = check_img_size(imgsz, s=model.stride.max())  # check img_size
 
-    model=torch.load(weights, map_location=device)['model'].float().eval()
-    stride = [8, 16, 32]
-    imgsz = check_img_size(imgsz, s=max(stride))  # check img_size
+    # model=torch.load(weights, map_location=device)['model'].float().eval()
+    # stride = [8, 16, 32]
+    # imgsz = check_img_size(imgsz, s=max(stride))  # check img_size
 
     # model = Darknet('cfg/prune_0.8_yolov3-spp.cfg', (opt.img_size, opt.img_size)).to(device)
     # initialize_weights(model)
@@ -188,7 +188,7 @@ def detect(number_person):
                 # txt_path = str(Path(out) / Path(p).stem) + ('_%g' % dataset.frame if dataset.mode == 'video' else '')
                 s += '%gx%g ' % img.shape[2:]  # print string
                 gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
-                results = [0, 0]
+                # results = [0, 0]
                 minconf=1
                 if det is not None and len(det):
                     # Rescale boxes from img_size to im0 size
@@ -312,11 +312,11 @@ def detect(number_person):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()  #/home/lzm/Disk3T/1-FWS_data/TestData_image/TX2_Test_data/double_company
-    parser.add_argument('--weights', nargs='+', type=str, default='/home/lishuang/Disk/remote/pycharm/yolov5/runs/last_s_kunming.pt', help='model.pt path(s)')
+    parser.add_argument('--weights', nargs='+', type=str, default='/home/lishuang/Disk/remote/pycharm/yolov5/runs/last_l.pt', help='model.pt path(s)')
     parser.add_argument('--source', type=str, default='/home/lishuang/Disk/shengshi_data/anti_tail_test_dataset/Data_of_each_scene', help='source')  # file/folder, 0 for webcam
-    parser.add_argument('--output', type=str, default='/home/lishuang/Disk/remote/pycharm/kunming', help='output folder')  # output folder
+    parser.add_argument('--output', type=str, default='/home/lishuang/Disk/remote/pycharm/last_l03', help='output folder')  # output folder
     parser.add_argument('--img-size', type=int, default=416, help='inference size (pixels)')
-    parser.add_argument('--conf-thres', type=float, default=0.4, help='object confidence threshold')
+    parser.add_argument('--conf-thres', type=float, default=0.3, help='object confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.5, help='IOU threshold for NMS')
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--view-img', action='store_true', help='display results')
