@@ -20,6 +20,20 @@
 *.data
 *.json
 
+#classification
+configs/
+mmcls/
+fangweisui_test_classification.py
+fangweisui_test_mmclassification.py
+ckpts/
+model_res.py
+
+#fangweisui
+fangweisui_test.py
+detect_videofile.py
+detect_fangweisui.py
+
+
 *.cfg
 !cfg/yolov3*.cfg
 

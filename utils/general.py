@@ -885,6 +885,20 @@ def non_max_suppression_test(prediction, conf_thres=0.1, iou_thres=0.6, merge=Fa
                             scores[check_index[1]]=0
                         else:
                             scores[check_index[0]] = 0
+
+        # 03_filter
+        # tmpx = tmpx[scores > 0.1]
+        # boxes, scores = tmpx[:, :4], tmpx[:, 4]
+        # ioumin = box_iou_min(boxes, boxes)
+        # classes = tmpx[:, 5]
+        # for class1 in range(len(classes)):
+        #     for class2 in range(len(classes)):
+        #         if classes[class1] in [0,1] and classes[class2] in [2,3,4] and scores[class1] > 0.1 and scores[class2]>0.1 and class1 != class2 and ioumin[class1][class2] >0.8:
+        #             if scores[class2]>scores[class1]:
+        #                 scores[class1]=0
+        #             else:
+        #                 scores[class2]=0
+
         output[xi] = tmpx[scores > 0.1]  # outputs
 
         if (time.time() - t) > time_limit:
@@ -1279,6 +1293,18 @@ def butter_lowpass_filtfilt(data, cutoff=1500, fs=50000, order=5):
     b, a = butter_lowpass(cutoff, fs, order=order)
     return filtfilt(b, a, data)  # forward-backward filter
 
+def plot_one_box_half(x, img, color=None, label=None, line_thickness=None):
+    # Plots one bounding box on image img
+    tl = line_thickness or round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1  # line/font thickness
+    color = color or [random.randint(0, 255) for _ in range(3)]
+    c1, c2 = (int(x[0]), int(x[1])), (int(x[2]), int(x[3]))
+    cv2.rectangle(img, c1, c2, color, thickness=tl, lineType=cv2.LINE_AA)
+    if label:
+        tf = max(tl - 1, 1)  # font thickness
+        t_size = cv2.getTextSize(label, 0, fontScale=tl / 3, thickness=tf)[0]
+        c2 = c1[0] + t_size[0], c2[1] - t_size[1] - 3
+        cv2.rectangle(img, (int(x[0]), int(x[3])), c2, color, -1, cv2.LINE_AA)  # filled
+        cv2.putText(img, label, (c1[0], int(x[3])-2), 0, tl / 3, [225, 255, 255], thickness=tf, lineType=cv2.LINE_AA)
 
 def plot_one_box(x, img, color=None, label=None, line_thickness=None):
     # Plots one bounding box on image img

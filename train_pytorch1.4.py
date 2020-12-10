@@ -306,8 +306,8 @@ def train(hyp, opt, device, tb_writer=None):
 
     # Create model
     model = Model(opt.cfg, nc=nc).to(device)
-
-    cfg_model = Darknet('cfg/yolov5s.cfg', (416, 416)).to(device)
+    #TODO 将cfg添加到配置变量中
+    cfg_model = Darknet('cfg/yolov5s_hand.cfg', (opt.img_size[0], opt.img_size[0])).to(device)
 
     # Image sizes
     gs = int(max(model.stride))  # grid size (max stride)
@@ -390,6 +390,7 @@ def train(hyp, opt, device, tb_writer=None):
 
         del ckpt
 
+    #复制模型权重 目前只支持yolov5s
     copy_weight(model,cfg_model)
     # 剪枝操作  sr开启稀疏训练  prune 不同的剪枝策略
     # 剪枝操作
@@ -455,7 +456,7 @@ def train(hyp, opt, device, tb_writer=None):
         if not opt.noautoanchor:
             check_anchors(dataset, model=model, thr=hyp['anchor_t'], imgsz=imgsz)
 
-
+    #剪枝前bn层权重
     for idx in prune_idx:
         bn_weights = gather_bn_weights(cfg_model.module_list, [idx])
         tb_writer.add_histogram('before_train_perlayer_bn_weights/hist', bn_weights.numpy(), idx, bins='doane')
@@ -623,6 +624,7 @@ def train(hyp, opt, device, tb_writer=None):
                         'val/giou_loss', 'val/obj_loss', 'val/cls_loss']
                 for x, tag in zip(list(mloss[:-1]) + list(results), tags):
                     tb_writer.add_scalar(tag, x, epoch)
+                #剪枝后bn层权重
                 bn_weights = gather_bn_weights(cfg_model.module_list, prune_idx)
                 tb_writer.add_histogram('bn_weights/hist', bn_weights.numpy(), epoch, bins='doane')
 

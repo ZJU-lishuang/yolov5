@@ -271,7 +271,7 @@ def train(hyp, opt, device, tb_writer=None):
             print(('\n' + '%10s' * 8) % ('Epoch', 'gpu_mem', 'GIoU', 'obj', 'cls', 'total', 'targets', 'img_size'))
             pbar = tqdm(pbar, total=nb)  # progress bar
         optimizer.zero_grad()
-        sr_flag = get_sr_flag(epoch, opt.sr)
+
         for i, (imgs, targets, paths, _) in pbar:  # batch -------------------------------------------------------------
             ni = i + nb * epoch  # number integrated batches (since train start)
             imgs = imgs.to(device, non_blocking=True).float() / 255.0  # uint8 to float32, 0-255 to 0.0-1.0

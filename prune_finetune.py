@@ -87,10 +87,10 @@ def train(hyp, opt, device, tb_writer=None):
     if rank in [-1, 0]:
         for f in glob.glob('*_batch*.jpg') + glob.glob(results_file):
             os.remove(f)
-    opt.cfg='cfg/prune_0.4_keep_0.01_yolov5s.cfg'
-    opt.weights='weights/prune_0.4_keep_0.01_last.pt'
-    opt.cfg = 'cfg/yolov5s_tiny.cfg'
-    opt.weights = ''
+    # opt.cfg='cfg/prune_0.4_keep_0.01_yolov5s.cfg'
+    # opt.weights='weights/prune_0.4_keep_0.01_last.pt'
+    # opt.cfg = 'cfg/yolov5s_tiny.cfg'
+    # opt.weights = ''
     # Create model
     # model = Model(opt.cfg, nc=nc).to(device)
     model = Darknet(opt.cfg, (opt.img_size[0], opt.img_size[0])).to(device)
@@ -237,8 +237,8 @@ def train(hyp, opt, device, tb_writer=None):
             tb_writer.add_histogram('classes', c, 0)
 
         # Check anchors
-        if not opt.noautoanchor:
-            check_anchors(dataset, model=model, thr=hyp['anchor_t'], imgsz=imgsz)
+        # if not opt.noautoanchor:
+        #     check_anchors(dataset, model=model, thr=hyp['anchor_t'], imgsz=imgsz)
 
 
     # Start training
@@ -375,7 +375,7 @@ def train(hyp, opt, device, tb_writer=None):
                 ema.update_attr(model, include=['yaml', 'nc', 'hyp', 'gr', 'names', 'stride'])
             final_epoch = epoch + 1 == epochs
             if not opt.notest or final_epoch:  # Calculate mAP
-                results, maps, times = test.test(opt.data,
+                results, maps, times = test.test_cfg(opt.data,
                                                  batch_size=total_batch_size,
                                                  imgsz=imgsz_test,
                                                  save_json=final_epoch and opt.data.endswith(os.sep + 'coco.yaml'),
