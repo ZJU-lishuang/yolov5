@@ -307,7 +307,7 @@ def train(hyp, opt, device, tb_writer=None):
     # Create model
     model = Model(opt.cfg, nc=nc).to(device)
     #TODO 将cfg添加到配置变量中
-    cfg_model = Darknet('cfg/yolov5s_hand.cfg', (opt.img_size[0], opt.img_size[0])).to(device)
+    cfg_model = Darknet('cfg/yolov5s_v2_hand.cfg', (opt.img_size[0], opt.img_size[0])).to(device)
 
     # Image sizes
     gs = int(max(model.stride))  # grid size (max stride)
