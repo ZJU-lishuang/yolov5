@@ -20,7 +20,7 @@ python train_pytorch1.4_sparsity.py --img 640 --batch 8 --epochs 300 --data ./da
 
 #todo
 #prune_finetune
-python prune_finetune.py --img 640 --batch 8 --epochs 10 --data ./data/hand.yaml --cfg ./cfg/prune_0.8_keep_0.01_8x_yolov5s_hand.cfg --weights ./weights/prune_0.8_keep_0.01_8x_last_s_to_prune.pt --name prune_hand_s
+python prune_finetune.py --img 640 --batch 8 --epochs 20 --data ./data/coco_hand.yaml --cfg ./cfg/prune_0.5_keep_0.01_8x_yolov5s_v2_hand.cfg --weights ./weights/prune_0.5_keep_0.01_8x_last_s_hand_sparsity.pt --name prunefinetune_hand_s
 
 #prune model inference
 python prune_detect.py --weights weights/last_prune_hand_s.pt --img  640 --conf 0.7 --save-txt --source inference/images
